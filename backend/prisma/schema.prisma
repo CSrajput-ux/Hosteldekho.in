@@ -1,0 +1,408 @@
+// ─────────────────────────────────────────────────────────────
+// HostelDekho — Prisma Schema
+// Database: MongoDB
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  OWNER
+  ADMIN
+}
+
+enum PropertyType {
+  BOYS_HOSTEL
+  GIRLS_HOSTEL
+  PG
+  FLAT
+  ROOM
+  COLIVING
+}
+
+enum GenderAllowed {
+  BOYS
+  GIRLS
+  UNISEX
+}
+
+enum PropertyStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  PAUSED
+  DELETED
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+  CHECKED_IN
+  COMPLETED
+}
+
+enum PaymentStatus {
+  CREATED
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum KycStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────────────────────
+// MODELS
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  name             String
+  email            String?   @unique
+  mobile           String    @unique
+  password         String?
+  role             Role      @default(USER)
+  gender           String?
+  city             String?
+  occupation       String?
+  collegeOrCompany String?
+  budgetRange      String?
+  preferredLocation String?
+  foodPreference   String?
+  profileImage     String?
+  isActive         Boolean   @default(true)
+  lastLoginAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  // Relations
+  properties       Property[]
+  bookings         Booking[]
+  wishlist         Wishlist[]
+  reviews          Review[]
+  sentMessages     Message[]    @relation("SentMessages")
+  chatsAsUser      Chat[]       @relation("UserChats")
+  chatsAsOwner     Chat[]       @relation("OwnerChats")
+  notifications    Notification[]
+  kycDocuments     Kyc[]
+  otpRecords       Otp[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model Otp {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  mobile    String
+  code      String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([mobile, code])
+  @@map("otps")
+}
+
+model Property {
+  id                 String         @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId            String         @db.ObjectId
+  title              String
+  slug               String         @unique
+  description        String?
+  type               PropertyType
+  genderAllowed      GenderAllowed
+  address            String
+  city               String
+  state              String
+  pincode            String?
+  latitude           Float?
+  longitude          Float?
+  priceStartingFrom  Int
+  depositAmount      Int
+  foodIncluded       Boolean        @default(false)
+  electricityIncluded Boolean       @default(false)
+  wifiIncluded       Boolean        @default(false)
+  acAvailable        Boolean        @default(false)
+  laundryAvailable   Boolean        @default(false)
+  parkingAvailable   Boolean        @default(false)
+  cctvAvailable      Boolean        @default(false)
+  powerBackup        Boolean        @default(false)
+  verified           Boolean        @default(false)
+  status             PropertyStatus @default(PENDING)
+  rules              String?
+  isFeatured         Boolean        @default(false)
+  totalRating        Float          @default(0)
+  totalReviews       Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  // Relations
+  owner              User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rooms              Room[]
+  images             PropertyImage[]
+  bookings           Booking[]
+  reviews            Review[]
+  wishlist           Wishlist[]
+  chats              Chat[]
+
+  @@index([city])
+  @@index([type])
+  @@index([status, createdAt])
+  @@index([ownerId])
+  @@index([latitude, longitude])
+  @@map("properties")
+}
+
+model PropertyImage {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  propertyId String   @db.ObjectId
+  url        String
+  publicId   String?
+  caption    String?
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("property_images")
+}
+
+model Room {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  propertyId       String   @db.ObjectId
+  name             String
+  sharingType      String
+  pricePerMonth    Int
+  deposit          Int
+  totalBeds        Int
+  availableBeds    Int
+  hasAc            Boolean  @default(false)
+  hasAttachedBathroom Boolean @default(false)
+  furnished        Boolean  @default(false)
+  images           String[] @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  property         Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  bookings         Booking[]
+
+  @@index([propertyId])
+  @@map("rooms")
+}
+
+model Booking {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String        @db.ObjectId
+  propertyId     String        @db.ObjectId
+  roomId         String        @db.ObjectId
+  moveInDate     DateTime
+  durationMonths Int
+  monthlyRent    Int
+  depositAmount  Int
+  platformFee    Int           @default(0)
+  totalPayable   Int
+  status         BookingStatus @default(PENDING_PAYMENT)
+  cancelReason   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // Relations
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property       Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  room           Room          @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  payment        Payment?
+
+  @@index([userId])
+  @@index([propertyId])
+  @@index([status])
+  @@map("bookings")
+}
+
+model Payment {
+  id                  String        @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId           String        @unique @db.ObjectId
+  razorpayOrderId     String?
+  razorpayPaymentId   String?
+  razorpaySignature   String?
+  amount              Int
+  currency            String        @default("INR")
+  status              PaymentStatus @default(CREATED)
+  refundId            String?
+  refundAmount        Int?
+  receiptUrl          String?
+  paidAt              DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  // Relations
+  booking             Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([razorpayOrderId])
+  @@map("payments")
+}
+
+model Wishlist {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  propertyId String   @db.ObjectId
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, propertyId])
+  @@map("wishlists")
+}
+
+model Review {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  propertyId String   @db.ObjectId
+  bookingId  String?  @db.ObjectId
+  rating     Int
+  comment    String
+  isApproved Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@map("reviews")
+}
+
+model Kyc {
+  id              String    @id @default(auto()) @map("_id") @db.ObjectId
+  ownerId         String    @db.ObjectId
+  aadhaarMasked   String?
+  panMasked       String?
+  selfieUrl       String?
+  propertyProofUrl String?
+  status          KycStatus @default(PENDING)
+  rejectionReason String?
+  verifiedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  owner           User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("kyc_documents")
+}
+
+model Chat {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  ownerId    String   @db.ObjectId
+  propertyId String   @db.ObjectId
+  lastMessage String?
+  lastMessageAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user       User     @relation("UserChats", fields: [userId], references: [id], onDelete: Cascade)
+  owner      User     @relation("OwnerChats", fields: [ownerId], references: [id], onDelete: Cascade)
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  messages   Message[]
+
+  @@unique([userId, ownerId, propertyId])
+  @@map("chats")
+}
+
+model Message {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  chatId    String   @db.ObjectId
+  senderId  String   @db.ObjectId
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@map("messages")
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  title     String
+  body      String
+  type      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model SearchLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String?  @db.ObjectId
+  query     String
+  filters   Json?
+  results   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("search_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  adminId   String   @db.ObjectId
+  action    String
+  targetId  String?
+  entity    String?  // e.g. "Property", "User"
+  details   String?
+  createdAt DateTime @default(now())
+
+  admin     User     @relation(fields: [adminId], references: [id])
+
+  @@index([action, createdAt])
+  @@index([targetId])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  value     Json
+  label     String?
+  group     String?  // e.g. "finance", "general"
+  updatedAt DateTime @updatedAt
+
+  @@map("system_configs")
+}
